@@ -5,13 +5,6 @@ if [ $CLUSTER_LHAPATH ]; then
   export LHAPATH=$CLUSTER_LHAPATH;
 fi
 
-# add cvmfs libraries to ld_library_path, if not present already
-if [ $srt_ld_library_path_scramrt ]; then 
-  if [ -n ${ld_library_path##*${srt_ld_library_path_scramrt}*} ]; then
-    export ld_library_path="$srt_ld_library_path_scramrt:$ld_library_path"
-  fi
-fi
-
 if [[ -e MadLoop5_resources.tar.gz && ! -e MadLoop5_resources ]]; then
 tar -xzf MadLoop5_resources.tar.gz;
 fi
