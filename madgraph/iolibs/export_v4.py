@@ -358,6 +358,9 @@ class ProcessExporterFortran(object):
          LHAPath='%(path)s/../lhapdf/pdfsets/'
          Inquire(File=LHAPath, exist=exists)
          if(exists)return  
+         LHAPath='%(path)s'
+         Inquire(File=LHAPath, exist=exists)
+         if(exists)return
          LHAPath='./PDFsets'            
          """ % {"path" : self.opt["cluster_local_path"]}
             changer = {"cluster_specific_path": to_add}

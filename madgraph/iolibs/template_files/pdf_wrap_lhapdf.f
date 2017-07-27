@@ -7,7 +7,7 @@ C
       include '../alfas.inc'
       real*8 zmass
       data zmass/91.188d0/
-      Character*150 LHAPath
+      Character*250 LHAPath
       character*20 parm(20)
       double precision value(20)
       real*8 alphasPDF
@@ -38,7 +38,7 @@ c generic subroutine to open the table files in the right directories
 c********************************************************************
       implicit none
 c
-      Character LHAPath*150,up*3
+      Character LHAPath*250,up*3
       data up/'../'/
       logical exists
       integer i

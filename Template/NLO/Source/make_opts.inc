@@ -36,7 +36,7 @@ ifdef f2pymode
 endif
 
 # Increase the number of allowed charcters in a Fortran line
-FFLAGS+= -ffixed-line-length-132
+FFLAGS+= -ffixed-line-length-300
 
 # Set FC unless it's defined by an environment variable
 ifeq ($(origin FC),default)
