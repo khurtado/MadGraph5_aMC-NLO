@@ -12,13 +12,6 @@ if [ $CLUSTER_LHAPATH ]; then
    export LHAPATH=$CLUSTER_LHAPATH;
 fi
 
-# Add CVMFS libraries to LD_LIBRARY_PATH, if not present already
-if [ $SRT_LD_LIBRARY_PATH_SCRAMRT ]; then 
-  if [ -n ${LD_LIBRARY_PATH##*${SRT_LD_LIBRARY_PATH_SCRAMRT}*} ]; then
-    export LD_LIBRARY_PATH="$SRT_LD_LIBRARY_PATH_SCRAMRT:$LD_LIBRARY_PATH"
-  fi
-fi
-
 tarCounter=0
 while [[ (-f MadLoop5_resources.tar.gz) && (! -f MadLoop5_resources/HelConfigs.dat) && ($tarCounter < 10) ]]; do
     if [[ $tarCounter > 0 ]]; then
@@ -41,7 +34,11 @@ integration_step=$4
 TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     
     if [[ $run_mode == 'all' || $run_mode == 'born' ]] ; then
-	j=$run_mode\_G$i
+	if [[ $runnumber == '0' ]] ; then
+	    j=$run_mode\_G$i
+	else
+	    j=$run_mode\_G$i\_$runnumber
+	fi
     else
 	if [[ $runnumber == '0' ]] ; then
 	    j=G$run_mode$i
