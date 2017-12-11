@@ -12,6 +12,11 @@
 #include "LHAPDF/Version.h"
 #include "LHAPDF/LHAGlue.h"
 
+#include <boost/shared_ptr.hpp>
+#include <boost/foreach.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <cstring>
+
 using namespace std;
 
 
