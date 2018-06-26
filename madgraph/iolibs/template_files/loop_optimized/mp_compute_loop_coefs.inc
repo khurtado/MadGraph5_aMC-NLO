@@ -87,6 +87,7 @@ C
 C
 C FUNCTIONS
 C
+      LOGICAL %(proc_prefix)sIS_HEL_SELECTED
       INTEGER %(proc_prefix)sML5SOINDEX_FOR_BORN_AMP
 	  INTEGER %(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP
 	  INTEGER %(proc_prefix)sML5SQSOINDEX
@@ -129,12 +130,12 @@ C
 	  %(complex_dp_format)s DPW(20,NWAVEFUNCS)
 	  common/%(proc_prefix)sW/DPW
 
-	  %(complex_mp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,0:NLOOPWAVEFUNCS)
-	  %(complex_mp_format)s PL(0:3,0:NLOOPWAVEFUNCS)
+	  %(complex_mp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_mp_format)s PL(0:3,-1:NLOOPWAVEFUNCS)
 	  common/%(proc_prefix)sMP_WL/WL,PL
 
-      %(complex_dp_format)s DP_WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,0:NLOOPWAVEFUNCS)
-	  %(complex_dp_format)s DP_PL(0:3,0:NLOOPWAVEFUNCS)
+      %(complex_dp_format)s DP_WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_dp_format)s DP_PL(0:3,-1:NLOOPWAVEFUNCS)
 	  common/%(proc_prefix)sWL/DP_WL,DP_PL
 
 ## if(not AmplitudeReduction){
@@ -193,6 +194,11 @@ C This flag is used to prevent the re-computation of the OpenLoop coefficients w
       INTEGER LIBINDEX
       COMMON/%(proc_prefix)sI_LIB/LIBINDEX
 
+C     This array specify potential special requirements on the helicities to
+C     consider. POLARIZATIONS(0,0) is -1 if there is not such requirement.
+      INTEGER POLARIZATIONS(0:NEXTERNAL,0:5)
+      COMMON/%(proc_prefix)sBEAM_POL/POLARIZATIONS
+
 C ----------
 C BEGIN CODE
 C ----------
@@ -216,8 +222,10 @@ DO I=1,NEXTERNAL
 ENDDO
 
 DO I=0,3
+  PL(I,-1)=CMPLX(ZERO,ZERO,KIND=16)
   PL(I,0)=CMPLX(ZERO,ZERO,KIND=16)
   IF (.NOT.COMPUTE_INTEGRAND_IN_QP) THEN
+    DP_PL(I,-1)=DCMPLX(0.0d0,0.0d0)
     DP_PL(I,0)=DCMPLX(0.0d0,0.0d0)
   ENDIF
 ENDDO
@@ -228,6 +236,8 @@ IF (.NOT.SKIP_LOOPNUM_COEFS_CONSTRUCTION) THEN
 DO I=1,MAXLWFSIZE
   DO J=0,LOOPMAXCOEFS-1
     DO K=1,MAXLWFSIZE
+	  WL(I,J,K,-1)=(ZERO,ZERO)
+	  DP_WL(I,J,K,-1)=(0.0d0,0.0d0)
       IF (I.EQ.K.AND.J.EQ.0) THEN
         WL(I,J,K,0)=(1.0e0_16,ZERO)
       ELSE
@@ -243,6 +253,18 @@ DO I=1,MAXLWFSIZE
     ENDDO
   ENDDO
 ENDDO
+
+C This is the chare conjugate version of the unit 4-currents in the canonical cartesian basis.
+C This, for now, is only defined for 4-fermionic currents.
+WL(1,0,2,-1) = (-1.0e0_16,ZERO)
+WL(2,0,1,-1) = (1.0e0_16,ZERO)
+WL(3,0,4,-1) = (1.0e0_16,ZERO)
+WL(4,0,3,-1) = (-1.0e0_16,ZERO)
+DP_WL(1,0,2,-1) = DCMPLX(-1.0d0,0.0d0)
+DP_WL(2,0,1,-1) = DCMPLX(1.0d0,0.0d0)
+DP_WL(3,0,4,-1) = DCMPLX(1.0d0,0.0d0)
+DP_WL(4,0,3,-1) = DCMPLX(-1.0d0,0.0d0)
+
 
 DO K=1, 3
 ## if(not AmplitudeReduction){
@@ -291,6 +313,12 @@ ENDDO
 DPW_COPIED = .False.
 DO H=1,NCOMB
   IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN
+
+C  Handle the possible requirement of specific polarizations
+  IF ((.NOT.CHECKPHASE).AND.HELDOUBLECHECKED.AND.POLARIZATIONS(0,0).eq.0.AND.(.NOT.%(proc_prefix)sIS_HEL_SELECTED(H))) THEN
+    CYCLE
+  ENDIF
+
   DO I=1,NEXTERNAL
     NHEL(I)=HELC(I,H)
   ENDDO
@@ -583,7 +611,7 @@ C During the evaluation of the AMPL, we had stored the stability in S(1,*) so we
 
 ## if(ComputeColorFlows){
 C We should compute the color flow either if it contributes to the final result (i.e. not used just for the filtering), or if the computation is only done from the color flows
-IF (((.NOT.DIRECT_ME_COMPUTATION).AND.ME_COMPUTATION_FROM_JAMP).OR.(H.EQ.USERHEL.OR.USERHEL.EQ.-1)) THEN
+IF (((.NOT.DIRECT_ME_COMPUTATION).AND.ME_COMPUTATION_FROM_JAMP).OR.((H.EQ.USERHEL.OR.USERHEL.EQ.-1).and.(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)))) THEN
 C The cumulative quantities must only be computed if that helicity contributes according to user request (second argument of the subroutine below).
   CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS(HEL_MULT)  
   IF(ME_COMPUTATION_FROM_JAMP) THEN
@@ -616,15 +644,21 @@ C   In principle it is no longer necessary to compute the quantity below once th
       ENDDO
 C   The if statement below is not strictly necessary but makes it clear when it is executed.
     ELSEIF(H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C     If both computational method is used, then we must just update RES_FROM_JAMP
-      DO K=0,3
-        DO I=0,NSQUAREDSO
-          RES_FROM_JAMP(K,I)=RES_FROM_JAMP(K,I)+BUFFRES(K,I)
+C     Make sure that that no polarization constraint filters out this helicity
+      IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
+C       If both computational method is used, then we must just update RES_FROM_JAMP
+        DO K=0,3
+          DO I=0,NSQUAREDSO
+            RES_FROM_JAMP(K,I)=RES_FROM_JAMP(K,I)+BUFFRES(K,I)
+          ENDDO
         ENDDO
-      ENDDO
+      ENDIF
     ENDIF 
     IF (H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-	  CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS_DERIVED_QUANTITIES(HEL_MULT)
+C     Make sure that that no polarization constraint filters out this helicity
+      IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
+	    CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS_DERIVED_QUANTITIES(HEL_MULT)
+	  ENDIF
 	ENDIF
   ENDIF
 ENDIF

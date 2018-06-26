@@ -1,6 +1,13 @@
 include ../../Source/make_opts
 FFLAGS+= -w
 
+# Load additional dependencies of the bias module, if present
+ifeq (,$(wildcard ../bias_dependencies))
+BIASDEPENDENCIES =
+else
+include ../bias_dependencies
+endif
+
 # Definitions
 
 LIBDIR = ../../lib/
@@ -17,15 +24,15 @@ else
     MADLOOP_LIB =
 endif
 
-LINKLIBS = $(LINK_MADLOOP_LIB) $(LINK_LOOP_LIBS) -L../../lib/ -ldhelas -ldsample -lmodel -lgeneric -lpdf -lcernlib $(llhapdf) 
+LINKLIBS = $(LINK_MADLOOP_LIB) $(LINK_LOOP_LIBS) -L../../lib/ -ldhelas -ldsample -lmodel -lgeneric -lpdf -lcernlib $(llhapdf) -lbias 
 
-LIBS = $(LIBDIR)libdhelas.$(libext) $(LIBDIR)libdsample.$(libext) $(LIBDIR)libgeneric.$(libext) $(LIBDIR)libpdf.$(libext) $(LIBDIR)libmodel.$(libext) $(LIBDIR)libcernlib.$(libext) $(MADLOOP_LIB) $(LOOP_LIBS)
+LIBS = $(LIBDIR)libbias.$(libext) $(LIBDIR)libdhelas.$(libext) $(LIBDIR)libdsample.$(libext) $(LIBDIR)libgeneric.$(libext) $(LIBDIR)libpdf.$(libext) $(LIBDIR)libmodel.$(libext) $(LIBDIR)libcernlib.$(libext) $(MADLOOP_LIB) $(LOOP_LIBS)
 
 # Source files
 
 PROCESS= driver.o myamp.o genps.o unwgt.o setcuts.o get_color.o \
          cuts.o cluster.o reweight.o initcluster.o addmothers.o setscales.o \
-	 idenparts.o \
+	 idenparts.o dummy_fct.o \
          $(patsubst %.f,%.o,$(wildcard auto_dsig*.f)) \
          $(patsubst %.f,%.o,$(wildcard matrix*.f))
 
@@ -34,10 +41,10 @@ SYMMETRY = symmetry.o idenparts.o
 # Binaries
 
 $(PROG): $(PROCESS) auto_dsig.o $(LIBS)
-	$(FC) -o $(PROG) $(PROCESS) $(LINKLIBS) $(LDFLAGS)
+	$(FC) -o $(PROG) $(PROCESS) $(LINKLIBS) $(LDFLAGS) $(BIASDEPENDENCIES)
 
 gensym: $(SYMMETRY) configs.inc $(LIBDIR)libmodel.$(libext) $(LIBDIR)libgeneric.$(libext)
-	$(FC) -o gensym $(SYMMETRY) -L../../lib/ -lmodel -lgeneric $(LDFLAGS)
+	$(FC) -o gensym $(SYMMETRY) -L../../lib/ -lmodel -lgeneric -lpdf $(llhapdf) $(LDFLAGS)
 
 $(LIBDIR)libmodel.$(libext): ../../Cards/param_card.dat
 	cd ../../Source/MODEL; make
@@ -57,6 +64,7 @@ $(LIBDIR)libpdf.$(libext):
 driver.f: genps.inc
 symmetry.o: genps.inc nexternal.inc configs.inc run_config.inc
 genps.o: genps.inc nexternal.inc configs.inc
+dummy_fct.0: run.inc genps.inc
 cuts.o: genps.inc nexternal.inc pmass.inc
 setcuts.o: genps.inc run_config.inc
 invarients.o: genps.inc nexternal.inc

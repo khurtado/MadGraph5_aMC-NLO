@@ -140,6 +140,7 @@ class Cluster(object):
         
         if not hasattr(self, 'temp_dir') or not self.temp_dir or \
             (input_files == [] == output_files):
+
             return self.submit(prog, argument, cwd, stdout, stderr, log, 
                                required_output=required_output, nb_submit=nb_submit)
             
@@ -257,6 +258,8 @@ class Cluster(object):
             target = path.rsplit('/SubProcesses',1)[0]
         elif 'MCatNLO' in path:
             target = path.rsplit('/MCatNLO',1)[0]
+        elif 'PY8_parallelization' in path:
+            target = path.rsplit('/PY8_parallelization',1)[0]
         elif second_path:
             target=path
             logger.warning("cluster.get_job_identifier runs unexpectedly. This should be fine but report this message if you have problem.")
@@ -535,6 +538,15 @@ Press ctrl-C to force the update.''' % self.options['cluster_status_update'][0])
         logger.warning("""This cluster didn't support metajob submit.""")
         return 0
 
+    def modify_interface(self, run_interface):
+        """routine which allow to modify the run_card/mg5cmd object to change the
+           default behavior of the runs.
+           This is called at the time of the compilation of the run_card. 
+           Note that this function can be called multiple times by run.
+           """
+        #run_card = run_interface.run_card
+        return 
+
 class Packet(object):
     """ an object for handling packet of job, it is designed to be thread safe
     """
@@ -618,9 +630,14 @@ class MultiCore(Cluster):
                     if isinstance(exe,str):
                         if os.path.exists(exe) and not exe.startswith('/'):
                             exe = './' + exe
+                        if isinstance(opt['stdout'],str):
+                            opt['stdout'] = open(opt['stdout'],'w')
                         if opt['stderr'] == None:
                             opt['stderr'] = subprocess.STDOUT
-                        proc = misc.Popen([exe] + arg,  **opt)
+                        if arg:
+                            proc = misc.Popen([exe] + arg,  **opt)
+                        else:
+                            proc = misc.Popen(exe,  **opt)
                         pid = proc.pid
                         self.pids.put(pid)
                         proc.wait()
@@ -673,7 +690,6 @@ class MultiCore(Cluster):
         
         tag = (prog, tuple(argument), cwd, nb_submit)
         if isinstance(prog, str):
-            
     
             opt = {'cwd': cwd, 
                    'stdout':stdout,
@@ -805,6 +821,7 @@ class MultiCore(Cluster):
                 elif isinstance(self.fail_msg, str):
                     raise Exception, self.fail_msg
                 else:
+                    misc.sprint(self.fail_msg)
                     raise self.fail_msg[0], self.fail_msg[1], self.fail_msg[2]
             # reset variable for next submission
             try:
@@ -1004,6 +1021,7 @@ class CondorCluster(Cluster):
 
         return status.stdout.readline().strip()
     
+    jobstatus = {'0':'U', '1':'I','2':'R','3':'X','4':'C','5':'H','6':'E'}
     @check_interupt()
     @multiple_try(nb_try=10, sleep=10)
     def control(self, me_dir):
@@ -1019,18 +1037,19 @@ class CondorCluster(Cluster):
             start = i * packet
             stop = (i+1) * packet
             cmd = "condor_q " + ' '.join(self.submitted_ids[start:stop]) + \
-            " -format \'%-2s\  ' \'ClusterId\' " + \
-            " -format \'%-2s \\n\' \'ifThenElse(JobStatus==0,\"U\",ifThenElse(JobStatus==1,\"I\",ifThenElse(JobStatus==2,\"R\",ifThenElse(JobStatus==3,\"X\",ifThenElse(JobStatus==4,\"C\",ifThenElse(JobStatus==5,\"H\",ifThenElse(JobStatus==6,\"E\",string(JobStatus))))))))\'"
-            
-            status = misc.Popen([cmd], shell=True, stdout=subprocess.PIPE, 
+            " -format \"%d \"   ClusterId " + \
+            " -format \"%d\\n\"  JobStatus "
+
+            status = misc.Popen([cmd], shell=True, stdout=subprocess.PIPE,
                                                              stderr=subprocess.PIPE)
             error = status.stderr.read()
             if status.returncode or error:
                 raise ClusterManagmentError, 'condor_q returns error: %s' % error
-                
+
             for line in status.stdout:
                 id, status = line.strip().split()
-                ongoing.append(int(id))
+                status = self.jobstatus[status]
+                ongoing.append(id)
                 if status in ['I','U']:
                     idle += 1
                 elif status == 'R':
@@ -1039,7 +1058,7 @@ class CondorCluster(Cluster):
                     fail += 1
 
         for id in list(self.submitted_ids):
-            if int(id) not in ongoing:
+            if id not in ongoing:
                 status = self.check_termination(id)
                 if status == 'wait':
                     run += 1
@@ -2126,3 +2145,5 @@ from_name = {'condor':CondorCluster, 'pbs': PBSCluster, 'sge': SGECluster,
              'lsf': LSFCluster, 'ge':GECluster, 'slurm': SLURMCluster, 
              'htcaas':HTCaaSCluster, 'htcaas2':HTCaaS2Cluster}
 
+onecore=MultiCore(1) # create a thread to run simple bash job without having to
+                     #fork the main process

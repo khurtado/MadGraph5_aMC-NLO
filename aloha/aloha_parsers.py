@@ -36,6 +36,11 @@ import vendor.ply.yacc as yacc
 from aloha.aloha_lib import KERNEL
 logger = logging.getLogger('aloha.parsers')
 
+try:
+    import madgraph.various.misc as misc
+except Exception:
+    import aloha.misc as misc
+
 
 # PLY lexer class
 class UFOExpressionParser(object):
@@ -268,7 +273,6 @@ class ALOHAExpressionParser(UFOExpressionParser):
         if re_groups:
             p1 = re_groups.group("name")
         new = aloha_lib.KERNEL.add_function_expression(p1, eval(p[3]))
-        
         p[0] = str(new)
     
     def p_expression_function2(self, p):
@@ -300,6 +304,19 @@ class ALOHAExpressionParser(UFOExpressionParser):
         new = aloha_lib.KERNEL.add_function_expression(p1, eval(p[3]), eval(p[5]),eval(p[7]))
         p[0] = str(new)
 
+    def p_expression_function4(self, p):
+        "expression : FUNCTION '(' expression ',' expression ',' expression ',' expression ')'"
+        if p[1] in self.aloha_object:
+            p[0] = p[1]+'('+p[3]+','+ p[5]+','+ p[7]+','+ p[9]+')'            
+            return
+        
+        p1 = p[1]
+        re_groups = self.re_cmath_function.match(p1)
+        if re_groups:
+            p1 = re_groups.group("name")
+        args = [eval(p[2*i+1]) for i in [1,2,3,4]]
+        new = aloha_lib.KERNEL.add_function_expression(p1, *args)
+        p[0] = str(new)
     
     def p_expression_binop(self, p):
         '''expression : expression '=' expression
@@ -317,27 +334,8 @@ class ALOHAExpressionParser(UFOExpressionParser):
                 new = aloha_lib.KERNEL.add_function_expression('/', denom)
                 p[0] = p[1] + ' * ' + str(new)
         
-    def p_expression_function3(self, p):
-        "expression : FUNCTION '(' expression ',' expression ',' expression ')'"
         
-        if p[1] in self.aloha_object:
-            p[0] = p[1]+'('+p[3]+','+ p[5]+','+ p[7]+')'
-            return
-        
-        args = [eval(p[2*i+1]) for i in [1,2,3]]
-        new = aloha_lib.KERNEL.add_function_expression(p[1], *args)
-        p[0] = str(new)
-        
-        
-        
-    def p_expression_function4(self, p):
-        "expression : FUNCTION '(' expression ',' expression ',' expression ',' expression ')'"
-        if p[1] in self.aloha_object:
-            p[0] = p[1]+'('+p[3]+','+ p[5]+','+ p[7]+','+ p[9]+')'            
-            return
-        args = [eval(p[2*i+1]) for i in [1,2,3,4]]
-        new = aloha_lib.KERNEL.add_function_expression(p[1], *args)
-        p[0] = str(new)
+
 
 # Main program, allows to interactively test the parser
 if __name__ == '__main__':

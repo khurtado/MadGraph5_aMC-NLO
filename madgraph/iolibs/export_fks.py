@@ -84,10 +84,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         Template, and clean the directory
         For now it is just the same as copy_v4template, but it will be modified
         """
+        
         mgme_dir = self.mgme_dir
         dir_path = self.dir_path
         clean =self.opt['clean']
-        
         
         #First copy the full template tree if dir_path doesn't exit
         if not os.path.isdir(dir_path):
@@ -98,8 +98,16 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                         os.path.basename(dir_path))
             shutil.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
             # distutils.dir_util.copy_tree since dir_path already exists
-            dir_util.copy_tree(pjoin(self.mgme_dir, 'Template', 'Common'),
-                               dir_path)
+            dir_util.copy_tree(pjoin(self.mgme_dir, 'Template', 'Common'),dir_path)
+            # Copy plot_card
+            for card in ['plot_card']:
+                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
+                    try:
+                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
+                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
+                    except IOError:
+                        logger.warning("Failed to move " + card + ".dat to default")
+            
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
                 raise MadGraph5Error, \
@@ -187,7 +195,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         writer = writers.FortranWriter(os.path.join(self.dir_path, 
                                              "SubProcesses","MadLoopCommons.f"))
         writer.writelines(MadLoopCommon%{
-                                   'print_banner_commands':self.MadLoop_banner})
+                                   'print_banner_commands':self.MadLoop_banner},
+                                            context={'collier_available':False})
         writer.close()
                                        
         # Write the cts_mpc.h and cts_mprec.h files imported from CutTools
@@ -267,7 +276,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
           pjoin('various','FO_analyse_card.py'),
           pjoin('various','histograms.py'),      
           pjoin('various','banner.py'),          
-          pjoin('various','cluster.py'),          
+          pjoin('various','cluster.py'),
+          pjoin('various','systematics.py'),          
           pjoin('various','lhe_parser.py'),
           pjoin('madevent','sum_html.py'),
           pjoin('madevent','gen_crossxhtml.py'),          
@@ -284,10 +294,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             cp(pjoin(_file_path,cp_file),
                 pjoin(self.dir_path,'bin','internal',os.path.basename(cp_file)))
 
-    def convert_model_to_mg4(self, model, wanted_lorentz = [], 
+    def convert_model(self, model, wanted_lorentz = [], 
                                                          wanted_couplings = []):
 
-        super(ProcessExporterFortranFKS,self).convert_model_to_mg4(model, 
+        super(ProcessExporterFortranFKS,self).convert_model(model, 
                                                wanted_lorentz, wanted_couplings)
         
         IGNORE_PATTERNS = ('*.pyc','*.dat','*.py~')
@@ -389,6 +399,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         text=''
         for i,e in enumerate(initial_states):
+            if len(e) ==1:
+                e.append(0)
             text=text+str(i+1)+' '+str(len(e))
             for t in e:
                 text=text+'   '
@@ -507,9 +519,14 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               writers.FortranWriter(filename), 
                               nfksconfs,maxproc,maxflow,nexternal,
                               fortran_model)
+        filename = 'genps.inc'
+        ngraphs = matrix_element.born_matrix_element.get_number_of_amplitudes()
+        ncolor = max(1,len(matrix_element.born_matrix_element.get('color_basis')))
+        self.write_genps(writers.FortranWriter(filename),maxproc,ngraphs,\
+                         ncolor,maxflow,fortran_model)
 
         filename = 'configs_and_props_info.dat'
-        nconfigs,max_leg_number,nfksconfs=self.write_configs_and_props_info_file(
+        nconfigs,max_leg_number=self.write_configs_and_props_info_file(
                               filename, 
                               matrix_element)
 
@@ -582,12 +599,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'pythia_unlops.f',
                      'driver_mintMC.f',
                      'driver_mintFO.f',
-                     'driver_vegas.f',
                      'appl_interface.cc',
                      'appl_interface_dummy.f',
                      'appl_common.inc',
                      'reweight_appl.inc',
-                     'driver_reweight.f',
                      'fastjetfortran_madfks_core.cc',
                      'fastjetfortran_madfks_full.cc',
                      'fjcore.cc',
@@ -598,11 +613,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'fks_singular.f',
                      'veto_xsec.f',
                      'veto_xsec.inc',
-                     'c_weight.inc',
+                     'weight_lines.f',
                      'fks_inc_chooser.f',
                      'leshouche_inc_chooser.f',
                      'configs_and_props_inc_chooser.f',
-                     'genps.inc',
                      'genps_fks.f',
                      'boostwdir2.f',
                      'madfks_mcatnlo.inc',
@@ -611,6 +625,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'HwU_dummy.f',
                      'madfks_plot.f',
                      'analysis_dummy.f',
+                     'analysis_lhe.f',
                      'mint-integrator2.f',
                      'MC_integer.f',
                      'mint.inc',
@@ -618,12 +633,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'q_es.inc',
                      'recluster.cc',
                      'Boosts.h',
-                     'reweight.inc',
-                     'reweight0.inc',
-                     'reweight1.inc',
-                     'reweightNLO.inc',
-                     'reweight_all.inc',
-                     'reweight_events.f',
                      'reweight_xsec.f',
                      'reweight_xsec_events.f',
                      'reweight_xsec_events_pdf_dummy.f',
@@ -632,11 +641,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'run_card.inc',
                      'setcuts.f',
                      'setscales.f',
-                     'symmetry_fks_test_MC.f',
-                     'symmetry_fks_test_ME.f',
-                     'symmetry_fks_test_Sij.f',
+                     'test_soft_col_limits.f',
                      'symmetry_fks_v3.f',
-                     'trapfpe.c',
                      'vegas2.for',
                      'write_ajob.f',
                      'handling_lhe_events.f',
@@ -666,12 +672,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         else:
             os.system("ln -s ../BinothLHA_user.f ./BinothLHA.f")
 
-
-        #import nexternal/leshouches in Source
-        ln('nexternal.inc', '../../Source', log=False)
-        ln('born_leshouche.inc', '../../Source', log=False)
-
-
         # Return to SubProcesses dir
         os.chdir(os.path.pardir)
         # Add subprocess to subproc.mg
@@ -679,7 +679,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         files.append_to_file(filename,
                              self.write_subproc,
                              borndir)
-
             
         os.chdir(cwd)
         # Generate info page
@@ -704,14 +703,50 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card.dat'))
 
 
-    def finalize_fks_directory(self, matrix_elements, history, makejpg = False,
-            online = False, 
-            compiler_dict={'fortran': 'gfortran', 'cpp': 'g++'}, 
-            output_dependencies = 'external', MG5DIR = None):
+    def pass_information_from_cmd(self, cmd):
+        """pass information from the command interface to the exporter.
+           Please do not modify any object of the interface from the exporter.
+        """
+        self.proc_defs = cmd._curr_proc_defs
+        if hasattr(cmd,'born_processes'):
+            self.born_processes = cmd.born_processes
+        else:
+            self.born_processes = []
+        return
+
+    def finalize(self, matrix_elements, history, mg5options, flaglist):
         """Finalize FKS directory by creating jpeg diagrams, html
-        pages,proc_card_mg5.dat and madevent.tar.gz."""
+                pages,proc_card_mg5.dat and madevent.tar.gz and create the MA5 card if
+        necessary."""
+        
+        devnull = os.open(os.devnull, os.O_RDWR)
+        try:
+            res = misc.call([mg5options['lhapdf'], '--version'], \
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception:
+            res = 1
+        if res != 0:
+            logger.info('The value for lhapdf in the current configuration does not ' + \
+                        'correspond to a valid executable.\nPlease set it correctly either in ' + \
+                        'input/mg5_configuration or with "set lhapdf /path/to/lhapdf-config" ' + \
+                        'and regenrate the process. \nTo avoid regeneration, edit the ' + \
+                        ('%s/Cards/amcatnlo_configuration.txt file.\n' % self.dir_path ) + \
+                        'Note that you can still compile and run aMC@NLO with the built-in PDFs\n')
+        
+        compiler_dict = {'fortran':  mg5options['fortran_compiler'],
+                             'cpp':  mg5options['cpp_compiler'],
+                             'f2py':  mg5options['f2py_compiler']}
+        
+        if 'nojpeg' in flaglist:
+            makejpg = False
+        else:
+            makejpg = True
+        output_dependencies = mg5options['output_dependencies']
+        
         
         self.proc_characteristic['grouped_matrix'] = False
+        self.proc_characteristic['complex_mass_scheme'] = mg5options['complex_mass_scheme']
+
         self.create_proc_charac()
 
         self.create_run_card(matrix_elements.get_processes(), history)
@@ -869,6 +904,28 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             raise MadGraph5Error, 'output_dependencies option %s not recognized'\
                                                             %output_dependencies
            
+        # Create the default MadAnalysis5 cards
+        if 'madanalysis5_path' in self.opt and not \
+                self.opt['madanalysis5_path'] is None and not self.proc_defs is None:
+            # When using 
+            processes = sum([me.get('processes') if not isinstance(me, str) else [] \
+                                for me in matrix_elements.get('matrix_elements')],[])
+
+            # Try getting the processes from the generation info directly if no ME are
+            # available (as it is the case for parallel generation
+            if len(processes)==0:
+                processes = self.born_processes
+            if len(processes)==0:
+                logger.warning(
+"""MG5aMC could not provide to Madanalysis5 the list of processes generated.
+As a result, the default card will not be tailored to the process generated.
+This typically happens when using the 'low_mem_multicore_nlo_generation' NLO generation mode.""")
+            # For now, simply assign all processes to each proc_defs.
+            # That shouldn't really affect the default analysis card created by MA5
+            self.create_default_madanalysis5_cards(
+                history, self.proc_defs, [processes,]*len(self.proc_defs),
+                self.opt['madanalysis5_path'], pjoin(self.dir_path,'Cards'),
+                levels =['hadron'])
 
     def write_real_from_born_configs(self, writer, matrix_element, fortran_model):
         """Writes the real_from_born_configs.inc file that contains
@@ -893,9 +950,28 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             lines.append("data (real_from_born_conf(irfbc,%d),irfbc=1,%d) /%s/" \
                              % (iFKS,len(links),real_configs))
 
+        # this is for 'LOonly' processes; in this case, a fake configuration 
+        # with all the born diagrams is written
+        if not matrix_element.get_fks_info_list():
+            # compute (again) the number of configurations at the born
+            base_diagrams = born_me.get('base_amplitude').get('diagrams')
+            minvert = min([max([len(vert.get('legs')) for vert in \
+                                    diag.get('vertices')]) for diag in base_diagrams])
+    
+            for idiag, diag in enumerate(base_diagrams):
+                if any([len(vert.get('legs')) > minvert for vert in
+                        diag.get('vertices')]):
+                # Only 3-vertices allowed in configs.inc
+                    continue
+                max_links = max_links + 1
+                
+            real_configs=', '.join(['%d' % i for i in range(1, max_links+1)])
+            lines.append("data (real_from_born_conf(irfbc,%d),irfbc=1,%d) /%s/" \
+                             % (1,max_links,real_configs))
+
         lines2.append("integer irfbc")
         lines2.append("integer real_from_born_conf(%d,%d)" \
-                         % (max_links,len(matrix_element.get_fks_info_list())))
+                         % (max_links, max(len(matrix_element.get_fks_info_list()),1)))
         # Write the file
         writer.writelines(lines2+lines)
 
@@ -939,6 +1015,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 iflines_width += '%s (id.eq.%d.or.id.eq.%d) then\n' % \
                         (ifstring, part.get_pdg_code(), part.get_anti_pdg_code())
             iflines_width += 'get_width_from_id=abs(%s)\n' % part.get('width')
+
+        # Make sure it compiles with an if-statement if the above lists are empty
+        if len(mass_particles)==0:
+            iflines_mass = 'if (.True.) then\n'
+
+        if len(width_particles)==0:
+            iflines_width = 'if (.True.) then\n'
 
         replace_dict = {'iflines_mass' : iflines_mass,
                         'iflines_width' : iflines_width}
@@ -988,12 +1071,14 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         lines.append("# M -> PMASS_D/PWIDTH_D") 
         lines.append("# P -> POW_D") 
         lines2 = []
-        nconfs = len(matrix_element.get_fks_info_list())
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
 
         max_iconfig=0
         max_leg_number=0
 
+        ########################################################
+        # this is for standard processes with [(real=)XXX]
+        ########################################################
         for iFKS, conf in enumerate(matrix_element.get_fks_info_list()):
             iFKS=iFKS+1
             iconfig = 0
@@ -1078,11 +1163,141 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                      (iFKS,leg.get('number'), iconf + 1, leg.get('id')))
                     lines2.append("P   %4d   %4d   %4d   %4d " % \
                                      (iFKS,leg.get('number'), iconf + 1, pow_part))
+
+        ########################################################
+        # this is for [LOonly=XXX]
+        ########################################################
+        if not matrix_element.get_fks_info_list():
+            born_me = matrix_element.born_matrix_element
+            # as usual, in this case we assume just one FKS configuration 
+            # exists with diagrams corresponding to born ones X the ij -> i,j
+            # splitting. Here j is chosen to be the last colored particle in
+            # the particle list
+            bornproc = born_me.get('processes')[0]
+            colors = [l.get('color') for l in bornproc.get('legs')] 
+
+            fks_i = len(colors)
+            # use the last colored particle if it exists, or 
+            # just the last
+            fks_j=1
+            for cpos, col in enumerate(colors):
+                if col != 1:
+                    fks_j = cpos+1
+                    fks_j_id = [l.get('id') for l in bornproc.get('legs')][cpos]
+
+            # for the moment, if j is initial-state, we do nothing
+            if fks_j > ninitial:
+                iFKS=1
+                iconfig = 0
+                s_and_t_channels = []
+                mapconfigs = []
+                base_diagrams = born_me.get('base_amplitude').get('diagrams')
+                model = born_me.get('base_amplitude').get('process').get('model')
+                minvert = min([max([len(vert.get('legs')) for vert in \
+                                        diag.get('vertices')]) for diag in base_diagrams])
+        
+                lines.append("# ")
+                lines.append("# nFKSprocess %d" % iFKS)
+                for idiag, diag in enumerate(base_diagrams):
+                    if any([len(vert.get('legs')) > minvert for vert in
+                            diag.get('vertices')]):
+                    # Only 3-vertices allowed in configs.inc
+                        continue
+                    iconfig = iconfig + 1
+                    helas_diag = born_me.get('diagrams')[idiag]
+                    mapconfigs.append(helas_diag.get('number'))
+                    lines.append("# Diagram %d for nFKSprocess %d" % \
+                                     (helas_diag.get('number'),iFKS))
+                    # Correspondance between the config and the amplitudes
+                    lines.append("C   %4d   %4d   %4d " % (iFKS,iconfig,
+                                                           helas_diag.get('number')))
+
+                    # Need to reorganize the topology so that we start with all
+                    # final state external particles and work our way inwards
+                    schannels, tchannels = helas_diag.get('amplitudes')[0].\
+                        get_s_and_t_channels(ninitial, model, 990)
+        
+                    s_and_t_channels.append([schannels, tchannels])
+
+                    #the first thing to write is the splitting ij -> i,j
+                    lines.append("F   %4d   %4d   %4d   %4d" % \
+                                     (iFKS,-1,iconfig,2))
+                                     #(iFKS,last_leg.get('number'), iconfig, len(daughters)))
+                    lines.append("D   %4d" % nexternal)
+                    lines.append("D   %4d" % fks_j)
+                    lines.append("S   %4d   %4d   %4d   %10d" % \
+                                         (iFKS,-1, iconfig,fks_j_id)) 
+                    # now we continue with all the other vertices of the diagrams;
+                    # we need to shift the 'last_leg' by 1 and replace leg fks_j with -1
+
+                    # Write out propagators for s-channel and t-channel vertices
+                    allchannels = schannels
+                    if len(tchannels) > 1:
+                        # Write out tchannels only if there are any non-trivial ones
+                        allchannels = schannels + tchannels
+
+                    for vert in allchannels:
+                        daughters = [leg.get('number') for leg in vert.get('legs')[:-1]]
+                        last_leg = vert.get('legs')[-1]
+                        lines.append("F   %4d   %4d   %4d   %4d" % \
+                                         (iFKS,last_leg.get('number')-1, iconfig, len(daughters)))
+
+                        # legs with negative number in daughters have to be shifted by -1
+                        for i_dau in range(len(daughters)):
+                            if daughters[i_dau] < 0:
+                                daughters[i_dau] += -1
+                        # finally relable fks with -1 if it appears in daughters
+                        if fks_j in daughters:
+                            daughters[daughters.index(fks_j)] = -1
+                        for d in daughters:
+                            lines.append("D   %4d" % d)
+                        if vert in schannels:
+                            lines.append("S   %4d   %4d   %4d   %10d" % \
+                                             (iFKS,last_leg.get('number')-1, iconfig,
+                                              last_leg.get('id')))
+                        elif vert in tchannels[:-1]:
+                            lines.append("T   %4d   %4d   %4d   %10d" % \
+                                             (iFKS,last_leg.get('number')-1, iconfig,
+                                              abs(last_leg.get('id'))))
+
+                        # update what the array sizes (mapconfig,iforest,etc) will be
+                        max_leg_number = min(max_leg_number,last_leg.get('number')-1)
+                    max_iconfig = max(max_iconfig,iconfig)
+        
+                # Write out number of configs
+                lines.append("# Number of configs for nFKSprocess %d" % iFKS)
+                lines.append("C   %4d   %4d   %4d" % (iFKS,0,iconfig))
+
+                # write the props.inc information
+                lines2.append("# ")
+                particle_dict = born_me.get('processes')[0].get('model').\
+                    get('particle_dict')
+        
+                for iconf, configs in enumerate(s_and_t_channels):
+                    lines2.append("M   %4d   %4d   %4d   %10d " % \
+                                    (iFKS,-1, iconf + 1, fks_j_id))
+                    pow_part = 1 + int(particle_dict[fks_j_id].is_boson())
+                    lines2.append("P   %4d   %4d   %4d   %4d " % \
+                                    (iFKS,-1, iconf + 1, pow_part))
+                    for vertex in configs[0] + configs[1][:-1]:
+                        leg = vertex.get('legs')[-1]
+                        if leg.get('id') not in particle_dict:
+                            # Fake propagator used in multiparticle vertices
+                            pow_part = 0
+                        else:
+                            particle = particle_dict[leg.get('id')]
+        
+                            pow_part = 1 + int(particle.is_boson())
+        
+                        lines2.append("M   %4d   %4d   %4d   %10d " % \
+                                         (iFKS,leg.get('number')-1, iconf + 1, leg.get('id')))
+                        lines2.append("P   %4d   %4d   %4d   %4d " % \
+                                         (iFKS,leg.get('number')-1, iconf + 1, pow_part))
     
         # Write the file
         open(filename,'w').write('\n'.join(lines+lines2))
 
-        return max_iconfig, max_leg_number, nconfs
+        return max_iconfig, max_leg_number
 
 
     def write_leshouche_info_declarations(self, writer, nfksconfs, 
@@ -1098,6 +1313,18 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         lines.append('integer icolup_d(%d,%d,%d,maxflow_used)' % (nfksconfs, 2, nexternal))
         lines.append('integer niprocs_d(%d)' % (nfksconfs))
 
+        writer.writelines(lines)
+
+
+    def write_genps(self, writer, maxproc,ngraphs,ncolor,maxflow, fortran_model):
+        """writes the genps.inc file
+        """
+        lines = []
+        lines.append("include 'maxparticles.inc'")
+        lines.append("include 'maxconfigs.inc'")
+        lines.append("integer maxproc,ngraphs,ncolor,maxflow")
+        lines.append("parameter (maxproc=%d,ngraphs=%d,ncolor=%d,maxflow=%d)" % \
+                     (maxproc,ngraphs,ncolor,maxflow))
         writer.writelines(lines)
 
 
@@ -1122,6 +1349,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             maxproc = max(maxproc, nprocs)
             maxflow = max(maxflow, nflows)
 
+        # this is for LOonly
+        if not matrix_element.get_fks_info_list():
+            (newlines, nprocs, nflows) = self.get_leshouche_lines_dummy(matrix_element.born_matrix_element, 1)
+            lines.extend(newlines)
+
         # Write the file
         open(filename,'w').write('\n'.join(lines))
 
@@ -1134,10 +1366,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         file = \
 """double precision function dlum()
 implicit none
-include 'timing_variables.inc'
 integer nfksprocess
 common/c_nfksprocess/nfksprocess
-call cpu_time(tbefore)
 """
         if matrix_element.real_processes:
             for n, info in enumerate(matrix_element.get_fks_info_list()):
@@ -1150,16 +1380,12 @@ else""" % {'n': n + 1, 'n_me' : info['n_me']}
 write(*,*) 'ERROR: invalid n in dlum :', nfksprocess
 stop
 endif
-call cpu_time(tAfter)
-tPDF = tPDF + (tAfter-tBefore)
 return
 end
 """
         else:
             file+= \
 """call dlum_0(dlum)
-call cpu_time(tAfter)
-tPDF = tPDF + (tAfter-tBefore)
 return
 end
 """
@@ -1573,12 +1799,19 @@ end
             matrix_element.get('processes')[0].nice_string(print_weighted=False))
         plot.draw()
 
+        # We also need to write the overall maximum quantities for this group
+        # of processes in 'global_specs.inc'. In aMCatNLO, there is always
+        # only one process, so this is trivial
+        self.write_global_specs(matrix_element, output_path=pjoin(dirpath,'global_specs.inc'))
+        open('unique_id.inc','w').write(
+"""      integer UNIQUE_ID
+      parameter(UNIQUE_ID=1)""")
+
         linkfiles = ['coupl.inc', 'mp_coupl.inc', 'mp_coupl_same_name.inc',
                      'cts_mprec.h', 'cts_mpc.h', 'MadLoopParamReader.f',
                      'MadLoopCommons.f','MadLoopParams.inc']
 
         # We should move to MadLoop5_resources directory from the SubProcesses
-
         ln(pjoin(os.path.pardir,os.path.pardir,'MadLoopParams.dat'),
                                               pjoin('..','MadLoop5_resources'))
 
@@ -2124,8 +2357,8 @@ c     this subdir has no soft singularities
             charges = [0.] * len(colors) 
 
             fks_i = len(colors)
-            # use the first colored particle if it exists, or 
-            # just the first
+            # use the last colored particle if it exists, or 
+            # just the last
             fks_j=1
             for cpos, col in enumerate(colors[:-1]):
                 if col != 1:
@@ -2627,6 +2860,109 @@ C     charge is set 0. with QCD corrections, which is irrelevant
         return lines, nproc, nflow
 
 
+    def get_leshouche_lines_dummy(self, matrix_element, ime):
+        #test written
+        """As get_leshouche_lines, but for 'fake' real emission processes (LOonly
+        In this case, write born color structure times ij -> i,j splitting)
+        """
+
+        bornproc = matrix_element.get('processes')[0]
+        colors = [l.get('color') for l in bornproc.get('legs')] 
+
+        fks_i = len(colors)
+        # use the last colored particle if it exists, or 
+        # just the last
+        fks_j=1
+        for cpos, col in enumerate(colors):
+            if col != 1:
+                fks_j = cpos+1
+    
+        # Extract number of external particles
+        (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
+        nexternal+=1 # remember, in this case matrix_element is born
+    
+        lines = []
+        for iproc, proc in enumerate(matrix_element.get('processes')):
+            # add the fake extra leg
+            legs = proc.get_legs_with_decays() + \
+                   [fks_common.FKSLeg({'id': -21,
+                                       'number': nexternal,
+                                       'state': True,
+                                       'fks': 'i',
+                                       'color': 8,
+                                       'charge': 0.,
+                                       'massless': True,
+                                       'spin': 3,
+                                       'is_part': True,
+                                       'self_antipart': True})]
+                                        
+            lines.append("I   %4d   %4d       %s" % \
+                         (ime, iproc + 1,
+                          " ".join([str(l.get('id')) for l in legs])))
+            for i in [1, 2]:
+                lines.append("M   %4d   %4d   %4d      %s" % \
+                         (ime, i, iproc + 1,
+                          " ".join([ "%3d" % 0 ] * ninitial + \
+                                   [ "%3d" % i ] * (nexternal - ninitial))))
+    
+            # Here goes the color connections corresponding to the JAMPs
+            # Only one output, for the first subproc!
+            if iproc == 0:
+                # If no color basis, just output trivial color flow
+                if not matrix_element.get('color_basis'):
+                    for i in [1, 2]:
+                        lines.append("C   %4d   %4d   1      %s" % \
+                                 (ime, i, 
+                                  " ".join([ "%3d" % 0 ] * nexternal)))
+                    color_flow_list = []
+                    nflow = 1
+    
+                else:
+                    # in this case the last particle (-21) has two color indices
+                    # and it has to be emitted by j_fks
+                    # First build a color representation dictionnary
+                    repr_dict = {}
+                    for l in legs[:-1]:
+                        repr_dict[l.get('number')] = \
+                            proc.get('model').get_particle(l.get('id')).get_color()\
+                            * (-1)**(1+l.get('state'))
+                    # Get the list of color flows
+                    color_flow_list = \
+                        matrix_element.get('color_basis').color_flow_decomposition(repr_dict,
+                                                                                   ninitial)
+                    # And output them properly
+                    for cf_i, color_flow_dict in enumerate(color_flow_list):
+                        # we have to add the extra leg (-21), linked to the j_fks leg
+                        # first, find the maximum color label
+                        maxicol = max(sum(color_flow_dict.values(), []))
+                        #then, replace the color labels
+                        if color_flow_dict[fks_j][0] == 0:
+                            anti = True
+                            icol_j = color_flow_dict[fks_j][1]
+                        else:
+                            anti = False
+                            icol_j = color_flow_dict[fks_j][0]
+
+                        if anti:
+                            color_flow_dict[nexternal] = (maxicol + 1, color_flow_dict[fks_j][1])
+                            color_flow_dict[fks_j][1] = maxicol + 1
+                        else:
+                            color_flow_dict[nexternal] = (color_flow_dict[fks_j][0], maxicol + 1) 
+                            color_flow_dict[fks_j][0] = maxicol + 1
+
+                        for i in [0, 1]:
+                            lines.append("C   %4d   %4d   %4d      %s" % \
+                                 (ime, i + 1, cf_i + 1,
+                                  " ".join(["%3d" % color_flow_dict[l.get('number')][i] \
+                                            for l in legs])))
+
+                    nflow = len(color_flow_list)
+
+        nproc = len(matrix_element.get('processes'))
+    
+        return lines, nproc, nflow
+
+
     #===============================================================================
     # get_den_factor_lines
     #===============================================================================
@@ -2661,10 +2997,13 @@ C     charge is set 0. with QCD corrections, which is irrelevant
         info_list = fks_born.get_fks_info_list()
         lines = []
         if info_list:
-            # if the reals have been generated, fill with the corresponding value of ij
+            # if the reals have been generated, fill with the corresponding value of ij if
+            # ij is massless, or with 0 if ij is massive (no collinear singularity)
+            ij_list = [info['fks_info']['ij']if \
+                    fks_born.born_matrix_element['processes'][0]['legs'][info['fks_info']['ij']-1]['massless'] \
+                    else 0 for info in info_list]
             lines.append('INTEGER IJ_VALUES(%d)' % len(info_list))
-            lines.append('DATA IJ_VALUES /' + \
-                         ', '.join(['%d' % info['fks_info']['ij'] for info in info_list]) + '/')
+            lines.append('DATA IJ_VALUES /' + ', '.join(['%d' % ij for ij in ij_list]) + '/')
         else:
             #otherwise just put the first leg
             lines.append('INTEGER IJ_VALUES(1)')
@@ -3025,6 +3364,11 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
+
+    def finalize(self, *args, **opts):
+        ProcessExporterFortranFKS.finalize(self, *args, **opts)
+        #export_v4.ProcessExporterFortranSA.finalize(self, *args, **opts)
+
 #===============================================================================
 # copy the Template in a new directory.
 #===============================================================================
@@ -3048,6 +3392,15 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             # distutils.dir_util.copy_tree since dir_path already exists
             dir_util.copy_tree(pjoin(self.mgme_dir, 'Template', 'Common'),
                                dir_path)
+            # Copy plot_card
+            for card in ['plot_card']:
+                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
+                    try:
+                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
+                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
+                    except IOError:
+                        logger.warning("Failed to copy " + card + ".dat to default")
+
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
                 raise MadGraph5Error, \
@@ -3090,17 +3443,31 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                                               libpath,"lib%s.a"%tir,tir_name=tir)
             setattr(self,tir_dir,libpath)
             if libpath != "":
-                if tir in ['pjfry','ninja','golem', 'samurai']:
+                if tir in ['pjfry','ninja','golem', 'samurai','collier']:
                     # We should link dynamically when possible, so we use the original
                     # location of these libraries.
                     link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
                     tir_libs.append('%s/lib%s.$(libext)'%(libpath,tir))
-                    # We must add the corresponding includes for golem, samurai
-                    # and ninja
-                    if tir in ['golem','samurai','ninja']:
+                    # For Ninja, we must also link against OneLoop.
+                    if tir in ['ninja']:
+                        if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
+                                              for ext in ['a','dylib','so']):
+                            raise MadGraph5Error(
+"The OneLOop library 'libavh_olo.(a|dylib|so)' could no be found in path '%s'. Please place a symlink to it there."%libpath)
+                        link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
+                        tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
+                    # We must add the corresponding includes for these TIR
+                    if tir in ['golem','samurai','ninja','collier']:
                         trg_path = pjoin(os.path.dirname(libpath),'include')
-                        to_include = misc.find_includes_path(trg_path,
+                        if os.path.isdir(trg_path):
+                            to_include = misc.find_includes_path(trg_path,
                                                         self.include_names[tir])
+                        else:
+                            to_include = None
+                        # Special possible location for collier
+                        if to_include is None and tir=='collier':
+                            to_include = misc.find_includes_path(
+                               pjoin(libpath,'modules'),self.include_names[tir])
                         if to_include is None:
                             logger.error(
 'Could not find the include directory for %s, looking in %s.\n' % (tir ,str(trg_path))+
@@ -3170,7 +3537,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         writer = writers.FortranWriter(os.path.join(self.dir_path, 
                                              "SubProcesses","MadLoopCommons.f"))
         writer.writelines(MadLoopCommon%{
-                                   'print_banner_commands':self.MadLoop_banner})
+                                   'print_banner_commands':self.MadLoop_banner},
+               context={'collier_available':self.tir_available_dict['collier']})
         writer.close()
 
         # link the files from the MODEL
@@ -3280,14 +3648,22 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                                                           print_weighted=False))
         plot.draw()
 
+        # We also need to write the overall maximum quantities for this group
+        # of processes in 'global_specs.inc'. In aMCatNLO, there is always
+        # only one process, so this is trivial
+        self.write_global_specs(matrix_element, output_path=pjoin(dirpath,'global_specs.inc'))
+        
+        open('unique_id.inc','w').write(
+"""      integer UNIQUE_ID
+      parameter(UNIQUE_ID=1)""")
+
         linkfiles = ['coupl.inc', 'mp_coupl.inc', 'mp_coupl_same_name.inc',
                      'cts_mprec.h', 'cts_mpc.h', 'MadLoopParamReader.f',
                      'MadLoopParams.inc','MadLoopCommons.f']
 
         for file in linkfiles:
             ln('../../%s' % file)
-
-
+                
         os.system("ln -s ../../makefile_loop makefile")
         
 # We should move to MadLoop5_resources directory from the SubProcesses

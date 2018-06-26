@@ -45,6 +45,7 @@ PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard mp_coef_construction_*.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard GOLEM_interface.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard COLLIER_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f))
 
 OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
@@ -64,7 +65,13 @@ OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/mp_coef_construction_*.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/GOLEM_interface.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/COLLIER_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/compute_color_flows.f))
+
+POLYNOMIAL = $(patsubst $(DOTF),$(DOTO),$(wildcard polynomial.f))
+OLP_POLYNOMIAL = $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/polynomial.f))
+
+
 
 $(PROG): check_sa.o $(PROCESS) makefile $(LIBS)
 	$(FC) $(FFLAGS) -o $(PROG) check_sa.o $(PROCESS) $(LINKLIBS)
@@ -79,8 +86,13 @@ $(CHECK_SA_BORN_SPLITORDERS):  check_sa_born_splitOrders.o $(patsubst $(DOTF),$(
 # This is the core of madloop computationally wise, so make sure to turn optimizations on and bound checks off.
 # We use %olynomial.o and not directly polynomial.o because we want it to match when both doing make check here
 # or make OLP one directory above
+%oloop_matrix.o : %olynomial.o %oloop_matrix.f
 %olynomial.o : %olynomial.f
 	$(FC) $(patsubst -O%,, $(subst -fbounds-check,,$(FFLAGS))) $(POLYNOMIAL_OPTIMIZATION) $(POLYNOMIAL_BOUNDS_CHECK) -c $< -o $@ $(LOOP_INCLUDE)
+
+
+$(DOTO) : $(DOTF) $(POLYNOMIAL) $(OLP_POLYNOMIAL)
+	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
 
 $(DOTO) : $(DOTF)
 	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
@@ -108,6 +120,10 @@ endif
 matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f 
 	touch __init__.py
 	$(F2PY) $(MADLOOP_LIB) -m matrix$(MENUM)py -c f2py_wrapper.f --fcompiler=$(FC)   -L../../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB)
+
+allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.f $(LIBS) $(WRAPPER)
+	touch __init__.py
+	$(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --fcompiler=$(FC)   -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB)
 
 clean:
 	@rm -f *.o *.so *.$(libext) *.$(dylibext)

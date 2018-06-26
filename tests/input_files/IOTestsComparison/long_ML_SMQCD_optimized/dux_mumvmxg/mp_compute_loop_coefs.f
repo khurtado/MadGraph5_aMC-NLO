@@ -8,7 +8,7 @@ C     Returns amplitude squared summed/avg over colors
 C     and helicities for the point in phase space P(0:3,NEXTERNAL)
 C     and external lines W(0:6,NEXTERNAL)
 C     
-C     Process: d u~ > m- vm~ g QED<=2 QCD<=1 [ virt = QCD ]
+C     Process: d u~ > m- vm~ g QCD<=1 QED<=2 [ virt = QCD ]
 C     
 C     Modules
 C     
@@ -73,6 +73,7 @@ C
 C     
 C     FUNCTIONS
 C     
+      LOGICAL ML5_0_IS_HEL_SELECTED
       INTEGER ML5_0_ML5SOINDEX_FOR_BORN_AMP
       INTEGER ML5_0_ML5SOINDEX_FOR_LOOP_AMP
       INTEGER ML5_0_ML5SQSOINDEX
@@ -117,14 +118,14 @@ C
       COMPLEX*16 DPW(20,NWAVEFUNCS)
       COMMON/ML5_0_W/DPW
 
-      COMPLEX*32 WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE
-     $ ,0:NLOOPWAVEFUNCS)
-      COMPLEX*32 PL(0:3,0:NLOOPWAVEFUNCS)
+      COMPLEX*32 WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
+     $ -1:NLOOPWAVEFUNCS)
+      COMPLEX*32 PL(0:3,-1:NLOOPWAVEFUNCS)
       COMMON/ML5_0_MP_WL/WL,PL
 
-      COMPLEX*16 DP_WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE
-     $ ,0:NLOOPWAVEFUNCS)
-      COMPLEX*16 DP_PL(0:3,0:NLOOPWAVEFUNCS)
+      COMPLEX*16 DP_WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
+     $ -1:NLOOPWAVEFUNCS)
+      COMPLEX*16 DP_PL(0:3,-1:NLOOPWAVEFUNCS)
       COMMON/ML5_0_WL/DP_WL,DP_PL
 
       COMPLEX*32 LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
@@ -154,6 +155,13 @@ C
       INTEGER LIBINDEX
       COMMON/ML5_0_I_LIB/LIBINDEX
 
+C     This array specify potential special requirements on the
+C      helicities to
+C     consider. POLARIZATIONS(0,0) is -1 if there is not such
+C      requirement.
+      INTEGER POLARIZATIONS(0:NEXTERNAL,0:5)
+      COMMON/ML5_0_BEAM_POL/POLARIZATIONS
+
 C     ----------
 C     BEGIN CODE
 C     ----------
@@ -182,8 +190,10 @@ C     AS A SAFETY MEASURE WE FIRST COPY HERE THE PS POINT
       ENDDO
 
       DO I=0,3
+        PL(I,-1)=CMPLX(ZERO,ZERO,KIND=16)
         PL(I,0)=CMPLX(ZERO,ZERO,KIND=16)
         IF (.NOT.COMPUTE_INTEGRAND_IN_QP) THEN
+          DP_PL(I,-1)=DCMPLX(0.0D0,0.0D0)
           DP_PL(I,0)=DCMPLX(0.0D0,0.0D0)
         ENDIF
       ENDDO
@@ -191,6 +201,8 @@ C     AS A SAFETY MEASURE WE FIRST COPY HERE THE PS POINT
       DO I=1,MAXLWFSIZE
         DO J=0,LOOPMAXCOEFS-1
           DO K=1,MAXLWFSIZE
+            WL(I,J,K,-1)=(ZERO,ZERO)
+            DP_WL(I,J,K,-1)=(0.0D0,0.0D0)
             IF (I.EQ.K.AND.J.EQ.0) THEN
               WL(I,J,K,0)=(1.0E0_16,ZERO)
             ELSE
@@ -206,6 +218,19 @@ C     AS A SAFETY MEASURE WE FIRST COPY HERE THE PS POINT
           ENDDO
         ENDDO
       ENDDO
+
+C     This is the chare conjugate version of the unit 4-currents in
+C      the canonical cartesian basis.
+C     This, for now, is only defined for 4-fermionic currents.
+      WL(1,0,2,-1) = (-1.0E0_16,ZERO)
+      WL(2,0,1,-1) = (1.0E0_16,ZERO)
+      WL(3,0,4,-1) = (1.0E0_16,ZERO)
+      WL(4,0,3,-1) = (-1.0E0_16,ZERO)
+      DP_WL(1,0,2,-1) = DCMPLX(-1.0D0,0.0D0)
+      DP_WL(2,0,1,-1) = DCMPLX(1.0D0,0.0D0)
+      DP_WL(3,0,4,-1) = DCMPLX(1.0D0,0.0D0)
+      DP_WL(4,0,3,-1) = DCMPLX(-1.0D0,0.0D0)
+
 
       DO K=1, 3
         DO I=1,NCTAMPS
@@ -245,6 +270,13 @@ C     AS A SAFETY MEASURE WE FIRST COPY HERE THE PS POINT
         IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(
      $.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H)
      $   .NE.0)))) THEN
+
+C         Handle the possible requirement of specific polarizations
+          IF ((.NOT.CHECKPHASE).AND.HELDOUBLECHECKED.AND.POLARIZATIONS(
+     $0,0).EQ.0.AND.(.NOT.ML5_0_IS_HEL_SELECTED(H))) THEN
+            CYCLE
+          ENDIF
+
           DO I=1,NEXTERNAL
             NHEL(I)=HELC(I,H)
           ENDDO

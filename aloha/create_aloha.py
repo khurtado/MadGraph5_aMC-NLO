@@ -211,9 +211,10 @@ in presence of majorana particle/flow violation"""
         new_id = _conjugate_gap + old_id
         
         self.kernel_tag = set()
-        if not self.routine_kernel or isinstance(self.routine_kernel, str):            
+        aloha_lib.KERNEL.use_tag = set()
+        if not self.routine_kernel or isinstance(self.routine_kernel, str):    
             self.routine_kernel = eval(self.parse_expression(self.lorentz_expr))
-        
+            self.kernel_tag = aloha_lib.KERNEL.use_tag
         # We need to compute C Gamma^T C^-1 = C_ab G_cb (-1) C_cd 
         #                  = C_ac G_bc (-1) C_bd = C_ac G_bc C_db
         self.routine_kernel = \
@@ -399,26 +400,29 @@ in presence of majorana particle/flow violation"""
         
         if factorize:
             lorentz = lorentz.factorize()
-            
+        
         lorentz.tag = set(aloha_lib.KERNEL.use_tag)
         return lorentz     
 
     @staticmethod
     def mod_propagator_expression(tag, text):
         """Change the index of the propagator to match the current need"""
-        data = re.split(r'(\b[a-zA-Z]\w*?)\(([\'\w,\s]*?)\)',text)
 
+        data = re.split(r'(\b[a-zA-Z]\w*?)\(([\'\w,\s\"\+\-]*?)\)',text)
+        to_change = {}
+        for old, new in tag.items():
+            if isinstance(new, str):
+                new='\'%s\'' % new
+            else:
+                new = str(new)
+            to_change[r'%s' % old] = new
         pos=-2
         while pos +3 < len(data):
             pos = pos+3
             ltype = data[pos]
             if ltype != 'complex':
-                for old, new in tag.items():
-                    if isinstance(new, str):
-                        new='\'%s\'' % new
-                    else:
-                        new = str(new)
-                    data[pos+1] = re.sub(r'\b%s\b' % old, new, data[pos+1])
+                data[pos+1] = re.sub(r'\b(?<!-)(%s)\b' % '|'.join(to_change),
+                                     lambda x: to_change[x.group()], data[pos+1])
             data[pos+1] = '(%s)' % data[pos+1]
         text=''.join(data)
         return text

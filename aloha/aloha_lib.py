@@ -50,6 +50,11 @@ import numbers
 import re
 import aloha # define mode of writting
 
+try:
+    import madgraph.various.misc as misc
+except Exception:
+    import aloha.misc as misc
+
 class defaultdict(collections.defaultdict):
 
     def __call__(self, *args):
@@ -128,6 +133,7 @@ class Computation(dict):
                  'theta_function', 'exp']
     def add_function_expression(self, fct_tag, *args):
 
+        
         if not (fct_tag.startswith('cmath.') or fct_tag in self.known_fct or
                                        (fct_tag, len(args)) in self.unknow_fct):
             self.unknow_fct.append( (fct_tag, len(args)) )
@@ -150,6 +156,7 @@ class Computation(dict):
                 argument.append(new)
             else:
                 argument.append(expression)
+
         for arg in argument:
             val = re.findall(r'''\bFCT(\d*)\b''', str(arg))
             for v in val:
@@ -158,7 +165,6 @@ class Computation(dict):
         # check if the function is a pure numerical function.
         if (fct_tag.startswith('cmath.') or fct_tag in self.known_fct) and \
                     all(isinstance(x, numbers.Number) for x in argument):
-            print "start the hack"
             import cmath
             if fct_tag.startswith('cmath.'):
                 module = ''
@@ -181,6 +187,7 @@ class Computation(dict):
             self.fct_expr[tag] = (fct_tag, argument) 
             self.reduced_expr2[tag] = (fct_tag, argument)
             self.add_tag((tag,))
+            
             return 'FCT(%s)' % id
         
 KERNEL = Computation()
@@ -468,6 +475,13 @@ class AddVariable(list):
         text += ' + '.join([str(item) for item in self])
         text += ' )'
         return text
+    
+    def __repr__(self):
+        text = ''
+        if self.prefactor != 1:
+            text += str(self.prefactor) + ' * '
+        text += super(AddVariable,self).__repr__()
+        return text        
     
     def count_term(self):
         # Count the number of appearance of each variable and find the most 
@@ -1056,7 +1070,8 @@ class LorentzObjectRepresentation(dict):
         self.spin_ind = spin_indices #spin indices
         self.nb_spin = len(spin_indices) #their number
         self.nb_ind = self.nb_lor + self.nb_spin #total number of indices
-                
+        
+        
         #store the representation
         if self.lorentz_ind or self.spin_ind:
             dict.__init__(self, representation) 
