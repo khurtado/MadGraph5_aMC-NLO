@@ -6,11 +6,15 @@ if [ $CLUSTER_LHAPATH ]; then
 fi
 
 # Add CVMFS libraries to LD_LIBRARY_PATH, if not present already
-if [ $SRT_LD_LIBRARY_PATH_SCRAMRT ]; then 
-  if [ -n ${LD_LIBRARY_PATH##*${SRT_LD_LIBRARY_PATH_SCRAMRT}*} ]; then
+if [ -n "$SRT_LD_LIBRARY_PATH_SCRAMRT" ]; then 
+  if [ -n "${LD_LIBRARY_PATH##*${SRT_LD_LIBRARY_PATH_SCRAMRT}*}" ]; then
     export LD_LIBRARY_PATH="$SRT_LD_LIBRARY_PATH_SCRAMRT:$LD_LIBRARY_PATH"
   fi
 fi
+
+# If TMPDIR is unset, set it to the condor scratch area if present
+# and fallback to /tmp
+export TMPDIR=${TMPDIR:-${_CONDOR_SCRATCH_DIR:-/tmp}}
 
 if [[ -e MadLoop5_resources.tar.gz && ! -e MadLoop5_resources ]]; then
 tar -xzf MadLoop5_resources.tar.gz
@@ -71,10 +75,15 @@ j=%(directory)s
      if [[ $status_code -ne 0 ]]; then 
 	 rm results.dat
 	 echo "ERROR DETECTED"
-	 echo "end-code not correct $status_code" > results.dat
+	 echo "end-code not correct $status_code" >> log.txt
+         echo "+ Hostname:" >> log.txt
+         hostname >> log.txt
+         echo "+ Printing job environment:" >> log.txt
+         env >> log.txt
      fi     
      if [[ -e ftn26 ]]; then
          cp ftn26 ftn25
      fi
      cd ../
 
+exit $status_code
